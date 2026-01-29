@@ -1,8 +1,10 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import MyCommitmentsHeader from '@/components/MyCommitmentsHeader'
+import CommitmentEarlyExitModal from '@/components/CommitmentEarlyExitModal/CommitmentEarlyExitModal'
 import styles from './page.module.css'
 
 // TODO: Replace with actual data from contracts
@@ -33,8 +35,44 @@ const mockCommitments = [
   },
 ]
 
+// Mock early-exit penalty: 10% of original amount (replace with contract logic)
+function getEarlyExitValues(originalAmount: string) {
+  const amount = Number(originalAmount)
+  const penaltyPercent = 10
+  const penaltyAmount = (amount * (penaltyPercent / 100)).toFixed(0)
+  const netReceive = (amount - Number(penaltyAmount)).toFixed(0)
+  return {
+    penaltyPercent: `${penaltyPercent}%`,
+    penaltyAmount: `${penaltyAmount} XLM`,
+    netReceiveAmount: `${netReceive} XLM`,
+  }
+}
+
 export default function MyCommitments() {
   const router = useRouter()
+  const [earlyExitCommitmentId, setEarlyExitCommitmentId] = useState<string | null>(null)
+  const [hasAcknowledged, setHasAcknowledged] = useState(false)
+
+  const commitmentForEarlyExit = mockCommitments.find((c) => c.id === earlyExitCommitmentId)
+  const earlyExitSummary = commitmentForEarlyExit
+    ? getEarlyExitValues(commitmentForEarlyExit.amount)
+    : null
+
+  const openEarlyExitModal = useCallback((id: string) => {
+    setEarlyExitCommitmentId(id)
+    setHasAcknowledged(false)
+  }, [])
+
+  const closeEarlyExitModal = useCallback(() => {
+    setEarlyExitCommitmentId(null)
+    setHasAcknowledged(false)
+  }, [])
+
+  const handleConfirmEarlyExit = useCallback(() => {
+    if (!earlyExitCommitmentId) return
+    // Parent would perform the transaction here
+    closeEarlyExitModal()
+  }, [earlyExitCommitmentId, closeEarlyExitModal])
 
   return (
     <main id="main-content">
@@ -96,7 +134,12 @@ export default function MyCommitments() {
                   <button className={styles.actionButton} aria-label={`View attestations for ${commitment.type} commitment`}>
                     View Attestations
                   </button>
-                  <button className={styles.actionButtonDanger} aria-label={`Early exit for ${commitment.type} commitment`}>
+                  <button
+                    type="button"
+                    className={styles.actionButtonDanger}
+                    aria-label={`Early exit for ${commitment.type} commitment`}
+                    onClick={() => openEarlyExitModal(commitment.id)}
+                  >
                     Early Exit
                   </button>
                 </div>
@@ -105,7 +148,22 @@ export default function MyCommitments() {
           )}
         </div>
       </div>
+
+      {commitmentForEarlyExit && earlyExitSummary && (
+        <CommitmentEarlyExitModal
+          isOpen={true}
+          commitmentId={commitmentForEarlyExit.id}
+          originalAmount={`${commitmentForEarlyExit.amount} XLM`}
+          penaltyPercent={earlyExitSummary.penaltyPercent}
+          penaltyAmount={earlyExitSummary.penaltyAmount}
+          netReceiveAmount={earlyExitSummary.netReceiveAmount}
+          hasAcknowledged={hasAcknowledged}
+          onChangeAcknowledged={setHasAcknowledged}
+          onCancel={closeEarlyExitModal}
+          onConfirm={handleConfirmEarlyExit}
+          onClose={closeEarlyExitModal}
+        />
+      )}
     </main>
   )
 }
-
