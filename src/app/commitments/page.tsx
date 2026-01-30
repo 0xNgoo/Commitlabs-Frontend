@@ -2,69 +2,174 @@
 
 import { useRouter } from 'next/navigation'
 import { useState, useCallback, useMemo } from 'react'
-import Link from 'next/link'
 import MyCommitmentsHeader from '@/components/MyCommitmentsHeader'
-import MyCommitmentsOverview from '@/components/MyCommitmentsOverview/MyCommitmentsOverview'
+import MyCommitmentsStats from '@/components/MyCommitmentsStats/MyCommitmentsStats'
+import MyCommitmentsFilters from '@/components/MyCommitmentsFilters/MyCommitmentsFilters'
+import MyCommitmentsGrid from '@/components/MyCommitmentsGrid'
 import CommitmentEarlyExitModal from '@/components/CommitmentEarlyExitModal/CommitmentEarlyExitModal'
-import styles from './page.module.css'
+import { Commitment, CommitmentStats } from '@/types/commitment'
 
-// TODO: Replace with actual data from contracts
-const mockCommitments = [
+const mockCommitments: Commitment[] = [
   {
-    id: '1',
-    type: 'Balanced',
-    amount: '100000',
-    duration: 60,
-    maxLoss: 8,
-    status: 'active',
-    createdAt: '2024-01-15',
-    expiresAt: '2024-03-15',
-    currentValue: '102000',
+    id: 'CMT-ABC123',
+    type: 'Safe',
+    status: 'Active',
+    asset: 'XLM',
+    amount: '50,000',
+    currentValue: '52,600',
+    changePercent: 5.2,
+    durationProgress: 75,
+    daysRemaining: 15,
     complianceScore: 95,
+    maxLoss: '2%',
+    currentDrawdown: '0.8%',
+    createdDate: 'Jan 10, 2026',
+    expiryDate: 'Feb 9, 2026',
   },
   {
-    id: '2',
+    id: 'CMT-XYZ789',
+    type: 'Balanced',
+    status: 'Active',
+    asset: 'USDC',
+    amount: '100,000',
+    currentValue: '112,500',
+    changePercent: 12.5,
+    durationProgress: 30,
+    daysRemaining: 42,
+    complianceScore: 88,
+    maxLoss: '8%',
+    currentDrawdown: '3.2%',
+    createdDate: 'Dec 15, 2025',
+    expiryDate: 'Feb 13, 2026',
+  },
+  {
+    id: 'CMT-DEF456',
+    type: 'Aggressive',
+    status: 'Active',
+    asset: 'XLM',
+    amount: '250,000',
+    currentValue: '296,750',
+    changePercent: 18.7,
+    durationProgress: 17,
+    daysRemaining: 75,
+    complianceScore: 76,
+    maxLoss: 'No limit',
+    currentDrawdown: '12.5%',
+    createdDate: 'Nov 20, 2025',
+    expiryDate: 'Feb 10, 2026',
+  },
+  {
+    id: 'CMT-GHI012',
     type: 'Safe',
-    amount: '50000',
-    duration: 30,
-    maxLoss: 2,
-    status: 'active',
-    createdAt: '2024-01-20',
-    expiresAt: '2024-02-20',
-    currentValue: '50100',
-    complianceScore: 100,
+    status: 'Settled',
+    asset: 'XLM',
+    amount: '75,000',
+    currentValue: '78,750',
+    changePercent: 5.0,
+    durationProgress: 100,
+    daysRemaining: 0,
+    complianceScore: 97,
+    maxLoss: '2%',
+    currentDrawdown: '0%',
+    createdDate: 'Dec 1, 2025',
+    expiryDate: 'Dec 31, 2025',
+  },
+  {
+    id: 'CMT-JKL345',
+    type: 'Balanced',
+    status: 'Early Exit',
+    asset: 'USDC',
+    amount: '150,000',
+    currentValue: '145,500',
+    changePercent: -3.0,
+    durationProgress: 100,
+    daysRemaining: 0,
+    complianceScore: 72,
+    maxLoss: '8%',
+    currentDrawdown: '3%',
+    createdDate: 'Nov 1, 2025',
+    expiryDate: 'Dec 30, 2025',
+  },
+  {
+    id: 'CMT-MN0678',
+    type: 'Aggressive',
+    status: 'Violated',
+    asset: 'XLM',
+    amount: '200,000',
+    currentValue: '160,000',
+    changePercent: -20.0,
+    durationProgress: 100,
+    daysRemaining: 0,
+    complianceScore: 45,
+    maxLoss: 'No limit',
+    currentDrawdown: '20%',
+    createdDate: 'Oct 15, 2025',
+    expiryDate: 'Jan 13, 2026',
   },
 ]
 
-// Mock early-exit penalty: 10% of original amount (replace with contract logic)
-function getEarlyExitValues(originalAmount: string) {
-  const amount = Number(originalAmount)
+const mockStats: CommitmentStats = {
+  totalActive: 3,
+  totalCommittedValue: '$461,850',
+  avgComplianceScore: 86,
+  totalFeesGenerated: '$1,250',
+}
+
+function getEarlyExitValues(originalAmount: string, asset: string) {
+  const amount = Number(originalAmount.replace(/,/g, ''))
   const penaltyPercent = 10
   const penaltyAmount = (amount * (penaltyPercent / 100)).toFixed(0)
   const netReceive = (amount - Number(penaltyAmount)).toFixed(0)
   return {
     penaltyPercent: `${penaltyPercent}%`,
-    penaltyAmount: `${penaltyAmount} XLM`,
-    netReceiveAmount: `${netReceive} XLM`,
+    penaltyAmount: `${Number(penaltyAmount).toLocaleString()} ${asset}`,
+    netReceiveAmount: `${Number(netReceive).toLocaleString()} ${asset}`,
   }
 }
 
 export default function MyCommitments() {
   const router = useRouter()
-  const [earlyExitCommitmentId, setEarlyExitCommitmentId] = useState<string | null>(null)
-  const [hasAcknowledged, setHasAcknowledged] = useState(false)
 
-  // Filter State
+  // State
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
   const [typeFilter, setTypeFilter] = useState('All')
   const [sortBy, setSortBy] = useState('Newest')
 
-  const commitmentForEarlyExit = mockCommitments.find((c) => c.id === earlyExitCommitmentId)
-  const earlyExitSummary = commitmentForEarlyExit
-    ? getEarlyExitValues(commitmentForEarlyExit.amount)
-    : null
+  const [earlyExitCommitmentId, setEarlyExitCommitmentId] = useState<string | null>(null)
+  const [hasAcknowledged, setHasAcknowledged] = useState(false)
 
+  // Derived State
+  const filteredCommitments = useMemo(() => {
+    let filtered = mockCommitments.filter((c) => {
+      const matchesSearch = c.id.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesStatus = statusFilter === 'All' || c.status.toLowerCase() === statusFilter.toLowerCase()
+      const matchesType = typeFilter === 'All' || c.type.toLowerCase() === typeFilter.toLowerCase()
+      return matchesSearch && matchesStatus && matchesType
+    })
+
+    // Basic Sorting Logic
+    if (sortBy === 'ValueHighLow') {
+      filtered.sort((a, b) => Number(b.amount.replace(/,/g, '')) - Number(a.amount.replace(/,/g, '')))
+    } else if (sortBy === 'ValueLowHigh') {
+      filtered.sort((a, b) => Number(a.amount.replace(/,/g, '')) - Number(b.amount.replace(/,/g, '')))
+    } else if (sortBy === 'Newest') {
+      filtered.sort((a, b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime())
+    } else if (sortBy === 'Oldest') {
+      filtered.sort((a, b) => new Date(a.createdDate).getTime() - new Date(b.createdDate).getTime())
+    }
+
+    return filtered
+  }, [searchQuery, statusFilter, typeFilter, sortBy])
+
+  const commitmentForEarlyExit = mockCommitments.find((c) => c.id === earlyExitCommitmentId)
+  const earlyExitSummary = useMemo(() => {
+    return commitmentForEarlyExit
+      ? getEarlyExitValues(commitmentForEarlyExit.amount, commitmentForEarlyExit.asset)
+      : null
+  }, [commitmentForEarlyExit])
+
+  // Callbacks
   const openEarlyExitModal = useCallback((id: string) => {
     setEarlyExitCommitmentId(id)
     setHasAcknowledged(false)
@@ -77,62 +182,48 @@ export default function MyCommitments() {
 
   const handleConfirmEarlyExit = useCallback(() => {
     if (!earlyExitCommitmentId) return
-    // Parent would perform the transaction here
     closeEarlyExitModal()
   }, [earlyExitCommitmentId, closeEarlyExitModal])
 
-  // Stats Data (Mocked)
-  const stats = useMemo(() => ({
-    totalActive: 3,
-    totalCommittedValue: '$461,850',
-    averageComplianceScore: '86%',
-    totalFeesGenerated: '$1,250',
-  }), [])
-
-  // Filtered Commitments
-  const filteredCommitments = useMemo(() => {
-    return mockCommitments.filter((c) => {
-      const matchesSearch = c.id.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesStatus = statusFilter === 'All' || c.status.toLowerCase() === statusFilter.toLowerCase()
-      const matchesType = typeFilter === 'All' || c.type.toLowerCase() === typeFilter.toLowerCase()
-      return matchesSearch && matchesStatus && matchesType
-    })
-  }, [searchQuery, statusFilter, typeFilter])
-
   return (
-    <main id="main-content">
+    <main id="main-content" className="min-h-screen bg-[#0a0a0a] flex flex-col">
       <MyCommitmentsHeader
         onBack={() => router.push('/')}
         onCreateNew={() => router.push('/create')}
       />
 
-      <div className={styles.container}>
-        <MyCommitmentsOverview
-          stats={stats}
-          search={{
-            searchQuery,
-            onSearchChange: setSearchQuery
-          }}
-          filters={{
-            status: statusFilter,
-            type: typeFilter,
-            sortBy,
-            onStatusChange: setStatusFilter,
-            onTypeChange: setTypeFilter,
-            onSortByChange: setSortBy
-          }}
+      <div className="w-full flex-1 px-[5.5rem] py-8 max-[1024px]:px-8 max-[640px]:px-4">
+        <MyCommitmentsStats
+          totalActive={mockStats.totalActive}
+          totalCommittedValue={mockStats.totalCommittedValue}
+          averageComplianceScore={`${mockStats.avgComplianceScore}%`}
+          totalFeesGenerated={mockStats.totalFeesGenerated}
         />
 
-        <div className={styles.resultsCount}>
-          {filteredCommitments.length} {filteredCommitments.length === 1 ? 'commitment' : 'commitments'} found
-        </div>
+        <MyCommitmentsFilters
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          status={statusFilter}
+          onStatusChange={setStatusFilter}
+          type={typeFilter}
+          onTypeChange={setTypeFilter}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
+        />
+
+        <MyCommitmentsGrid
+          commitments={filteredCommitments}
+          onDetails={(id) => router.push(`/commitments/${id}`)}
+          onAttestations={(id) => console.log('Attestations for', id)}
+          onEarlyExit={openEarlyExitModal}
+        />
       </div>
 
       {commitmentForEarlyExit && earlyExitSummary && (
         <CommitmentEarlyExitModal
           isOpen={true}
           commitmentId={commitmentForEarlyExit.id}
-          originalAmount={`${commitmentForEarlyExit.amount} XLM`}
+          originalAmount={`${commitmentForEarlyExit.amount} ${commitmentForEarlyExit.asset}`}
           penaltyPercent={earlyExitSummary.penaltyPercent}
           penaltyAmount={earlyExitSummary.penaltyAmount}
           netReceiveAmount={earlyExitSummary.netReceiveAmount}
